@@ -1,0 +1,78 @@
+.POSIX:
+.SUFFIXES:
+.SUFFIXES: .c .o .uto
+
+VERSION    = 1.0.0
+
+CC         = @CC@
+CCOV       = gcov
+CFLAGS     = @CFLAGS@
+CFLAGS_COV = @CFLAGS_COV@
+CFLAGS_SAN = @CFLAGS_SAN@
+INCLUDEDIR = @PREFIX@/include
+LD         = @LD@
+LIBS       = @LIBS@
+LIBDIR     = @PREFIX@/lib
+PREFIX     = @PREFIX@
+
+.PHONY: all
+all: libtok.a
+
+libtok.a: strtok.o
+	$(LD) -r $^ -o $@
+
+.c.o:
+	$(CC) $(CFLAGS) -I. -c $< -o $@
+
+.c.uto:
+	$(CC) $(CFLAGS) $(CFLAGS_COV) $(CFLAGS_SAN) -I. -c $< -o $@
+
+test_readme: README.md libtok.a
+	awk '/```c/{ C=1; next } /```/{ C=0 } C' README.md | sed -e 's#libtok/##' > test_readme.c
+	$(CC) $(CFLAGS) $(CFLAGS_SAN) $(LIBS) -I. test_readme.c strtok.c -o $@
+	./$@
+
+strtok.coverage: strtok.uto tests/test_strtok.o
+	$(CC) $(CFLAGS) $(CFLAGS_COV) $(CFLAGS_SAN) $(LIBS) -I. $^ -o $@
+	./$@
+	$(CCOV) strtok.c
+	! grep "#####" strtok.c.gcov
+
+libtok.pc:
+	( echo 'Name: libtok' ;\
+	echo 'Version: $(VERSION)' ;\
+	echo 'Description: String Object Implementation in C' ;\
+	echo 'prefix=$(PREFIX)' ;\
+	echo 'exec_prefix=$${prefix}' ;\
+	echo 'includedir=$${prefix}/include' ;\
+	echo 'libdir=$${prefix}/lib' ;\
+	echo 'Cflags: -I$${includedir}' ;\
+	echo 'Libs: -L$${libdir} -ltok' ) > $@
+
+.PHONY: test
+test: test_readme
+test: strtok.coverage
+
+.PHONY: install
+install: strtok.h libtok.a libtok.pc
+	mkdir -p $(DESTDIR)$(INCLUDEDIR)/libtok
+	mkdir -p $(DESTDIR)$(LIBDIR)/pkgconfig
+	install -m644 strtok.h $(DESTDIR)$(INCLUDEDIR)/libtok/strtok.h
+	install -m644 libtok.a $(DESTDIR)$(LIBDIR)/libtok.a
+	install -m644 libtok.pc $(DESTDIR)$(LIBDIR)/pkgconfig/libtok.pc
+
+.PHONY: uninstall
+uninstall:
+	rm -f $(DESTDIR)$(INCLUDEDIR)/libtok/strtok.h
+	rm -f $(DESTDIR)$(LIBDIR)/libtok.a
+	rm -f $(DESTDIR)$(LIBDIR)/pkgconfig/libtok.pc
+
+.PHONY: clean
+clean:
+	rm -f *.o **/*.o *.uto **/*.uto *.gc?? **/*.gc?? *.coverage
+	rm -f libtok.a libtok.pc
+	rm -f test_readme*
+
+.PHONY: distclean
+distclean: clean
+	rm -f Makefile config.status
